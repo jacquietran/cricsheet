@@ -9,7 +9,7 @@
 # Formats that don't have an "all_matches.csv" file:
 # Non-official T20I, T20I, One-day matches, ODIs, Multi-day matches, Tests
 
-fetch_cricsheet <- function(
+fetch_cricsheet_bbb <- function(
   competition = c(
     "bbl", "bpl", "cpl", "county", "edwards_cup", "heyhoe_flint_trophy", "ipl",
     "msl", "psl", "sheffield_shield", "t20_blast", "wbbl", "wipl")
