@@ -75,44 +75,69 @@ fetch_cricsheet_match_info <- function(
   # Read data from multiple CSVs stored in the temp directory
   # Fills rows of unequal length, but haven't figured out
   # how to add a column with the source filepath included
-  all_matches_info <- do.call(
-    "rbind", lapply(
-      info_filepaths,
-      FUN=function(files){
-        read.table(
-          files, fill = TRUE, header = FALSE, sep = ",", skip = 1,
-          col.names = c(
-            "delete1", "key", "value", "delete2", "delete3"))
-        }))
+  # all_matches_info <- do.call(
+  #  "rbind", lapply(
+  #    info_filepaths,
+  #    FUN=function(files){
+  #      read.table(
+  #        files, fill = TRUE, header = FALSE, sep = ",", skip = 1,
+  #        col.names = c(
+  #          "delete1", "key", "value", "delete2", "delete3"))
+  #      }))
   
   # Attempt 2:
   # Read data from multiple CSVs stored in the temp directory
   # Does not fill rows of unequal length,
   # But does add column with the source filepath included
-  all_matches_info <- readr::read_csv(
+  all_matches_info <- suppressWarnings(
+    readr::read_csv(
       info_filepaths, id = "path", guess_max = 100,
-      col_names = c("col_to_delete", "key", "value1", "value2"),
+      col_names = c("col_to_delete", "key", "value"),
       skip = 1, show_col_types = FALSE,
       col_types = readr::cols(.default = readr::col_character()))
-  
-  # Tidy up and subset to match metadata only
-  # (i.e., excluding player / people metadata)
-    # Note: Message suppressed because the source data
+  )
+  # Note: Warning suppressed because the source data
   # changes format slightly when displaying player metadata.
   # Match metadata is in key-value pairs,
   # while player metadata contains additional value columns
-  # We can safely suppress the message here because
+  # We can safely suppress the warning(s) here because
   # we omit player metadata later on in the tidying process.
-  all_matches_info_tidy <- all_matches_info |>
-    dplyr::select(-col_to_delete) |>
-    dplyr::filter(!key %in% c("player", "registry")) |>
-    tidyr::separate(
-      path, sep = "/",
-      c("path_start", "match_id")) |>
-    dplyr::select(-path_start) |>
-    dplyr::mutate(
-      match_id = stringr::str_replace(
-        match_id, "_info.csv", ""))
+  
+  # Tidy up and subset to match metadata only
+  # (i.e., excluding player / people metadata)
+  # Note: Warning suppressed again as per note above.
+  all_matches_info_tidy <- suppressWarnings(
+    all_matches_info |>
+      dplyr::select(-col_to_delete) |>
+      dplyr::filter(!key %in% c("player", "players", "registry")) |>
+      tidyr::separate(
+        path, sep = "/", c("path_start", "match_id")) |>
+      dplyr::select(-path_start) |>
+      dplyr::mutate(
+        match_id = stringr::str_replace(
+          match_id, "_info.csv", "")) |>
+      #dplyr::group_by(match_id) |>
+      #dplyr::mutate(is_dup = duplicated(key)) |>
+      #dplyr::ungroup() |>
+      #dplyr::mutate(
+      #  key = dplyr::case_when(
+      #    key == "team" &
+      #      is_dup == FALSE ~ "team_1",
+      #    key == "team" &
+      #      is_dup == TRUE  ~ "team_2",
+      #    key == "umpire" &
+      #      is_dup == FALSE ~ "umpire_1",
+      #    key == "umpire" &
+      #      is_dup == TRUE  ~ "umpire_2",
+      #    TRUE              ~ key)) |>
+      #dplyr::select(-is_dup) |>
+      tidyr::pivot_wider(
+        id_cols = "match_id",
+        names_from = "key",
+        values_from = "value",
+        values_fill = NA) |>
+      dplyr::mutate_all(~replace(., .=="NULL", NA_character_))
+  )
   
   unlink(temp)
   
