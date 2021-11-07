@@ -32,11 +32,19 @@ fetch_cricsheet_match_info <- function(
       rep("male", 2), "female", "male", rep("female", 3))) |>
     dplyr::mutate(
       glued_url = glue::glue(
-        "https://cricsheet.org/downloads/{url_segment}_{sex}_csv2.zip"))
+        "https://cricsheet.org/downloads/{url_segment}_{sex}_csv2.zip"),
+      zip_filename = glue::glue(
+        "{url_segment}_{sex}_csv2.zip"))
   
   url <- possible_urls |>
     dplyr::filter(competition_type == competition) |>
     dplyr::pull(glued_url)
+  
+  # TODO: Check if the same file has been downloaded
+  # in the current R session
+  # zip_filename <- possible_urls |>
+  #  dplyr::filter(competition_type == competition) |>
+  #  dplyr::pull(zip_filename)
   
   # Download zip file from Cricsheet.org
   temp <- tempfile()
@@ -63,21 +71,40 @@ fetch_cricsheet_match_info <- function(
   # correspond to match info metadata
   unzip(temp, info_files, exdir = tempdir())
   
+  # Attempt 1:
   # Read data from multiple CSVs stored in the temp directory
-  all_matches_info <- readr::read_csv(
-    info_filepaths, col_names = c("col_to_delete", "data"),
-    id = "path", skip = 1)
+  # Fills rows of unequal length, but haven't figured out
+  # how to add a column with the source filepath included
+  all_matches_info <- do.call(
+    "rbind", lapply(
+      info_filepaths,
+      FUN=function(files){
+        read.table(
+          files, fill = TRUE, header = FALSE, sep = ",", skip = 1,
+          col.names = c(
+            "delete1", "key", "value", "delete2", "delete3"))
+        }))
   
-  unlink(temp)
+  # Attempt 2:
+  # Read data from multiple CSVs stored in the temp directory
+  # Does not fill rows of unequal length,
+  # But does add column with the source filepath included
+  all_matches_info <- readr::read_csv(
+      info_filepaths, id = "path", guess_max = 100,
+      col_names = c("col_to_delete", "key", "value1", "value2"),
+      skip = 1, show_col_types = FALSE,
+      col_types = readr::cols(.default = readr::col_character()))
   
   # Tidy up and subset to match metadata only
   # (i.e., excluding player / people metadata)
+    # Note: Message suppressed because the source data
+  # changes format slightly when displaying player metadata.
+  # Match metadata is in key-value pairs,
+  # while player metadata contains additional value columns
+  # We can safely suppress the message here because
+  # we omit player metadata later on in the tidying process.
   all_matches_info_tidy <- all_matches_info |>
     dplyr::select(-col_to_delete) |>
-    tidyr::separate(
-      data, sep = "\\,",
-      c("key", "value"),
-      extra = "merge", fill = "right") |>
     dplyr::filter(!key %in% c("player", "registry")) |>
     tidyr::separate(
       path, sep = "/",
@@ -86,6 +113,8 @@ fetch_cricsheet_match_info <- function(
     dplyr::mutate(
       match_id = stringr::str_replace(
         match_id, "_info.csv", ""))
+  
+  unlink(temp)
   
   return(all_matches_info_tidy)
 
